@@ -3,58 +3,56 @@ package com.nashtech;
 import com.nashtech.options.GCPOptions;
 import com.nashtech.options.PipelineFactory;
 import org.apache.beam.sdk.Pipeline;
-import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
-import org.apache.beam.sdk.transforms.Create;
+import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessage;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
-import org.apache.beam.sdk.values.PCollection;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import org.apache.beam.sdk.values.*;
+import org.checkerframework.checker.initialization.qual.Initialized;
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.UnknownKeyFor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 public class Application {
+    final static Logger logger = LoggerFactory.getLogger(Application.class);
+
     public static void main(String[] args) {
         Pipeline pipeline = PipelineFactory.createPipeline(args);
         GCPOptions options = pipeline.getOptions().as(GCPOptions.class);
 
-        //REST API endpoint
-        String apiUrl = "https://my.api.mockaroo.com/3_fixed_band.json?key=dcbc8750";
+        PCollection<@UnknownKeyFor @NonNull @Initialized PubsubMessage> messages;
 
-        PCollection<String> dummyInput = pipeline.apply("CreateDummyInput", Create.of("dummy"));
+        if (options.getUseSubscription()) {
+            logger.info("Reading From Subscription");
+            messages = pipeline.apply("Reading From Subscription", PubsubIO.readMessagesWithAttributes().fromSubscription(options.getInputSubscription()));
+        } else {
+            logger.info("Reading From Pub Sub Topic");
+            messages = pipeline
+                    // 1) Read string messages from a Pub/Sub topic.
+                    .apply("Read PubSub Messages From Topic", PubsubIO.readMessagesWithAttributes().fromTopic(options.getInputTopic()));
+        }
 
-        // Fetch data from the REST API endpoint
-        PCollection<String> data = dummyInput.apply("FetchData", ParDo.of(new DoFn<String, String>() {
+        PCollection<String> stringMessages = messages.apply("Convert to String", ParDo.of(new DoFn<PubsubMessage, String>() {
             @ProcessElement
-            public void processElement(ProcessContext c) throws Exception {
-                URL url = new URL(apiUrl);
-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                int responseCode = connection.getResponseCode();
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-                    String inputLine;
-                    StringBuilder response = new StringBuilder();
-                    while ((inputLine = in.readLine()) != null) {
-                        response.append(inputLine);
-                    }
-                    in.close();
-                    c.output(response.toString());
-                } else {
-                    throw new RuntimeException("Failed to fetch data from API, status code: " + responseCode);
-                }
+            public void process(ProcessContext processContext) {
+                PubsubMessage pubsubMessage = processContext.element();
+                Optional<String> messageString = Optional.ofNullable(pubsubMessage)
+                        .map(message -> new String(message.getPayload(), StandardCharsets.UTF_8));
+                messageString.ifPresent(processContext::output);
             }
         }));
 
-        // Send Data to GCS Bucket
-        data.apply("Write to GCS bucket", TextIO.write().to(options.getGcsBucketName()));
-
-        // Write Data to Pub/Sub Topic
-        data.apply("Write to Pub/Sub Topic", PubsubIO.writeStrings().to(options.getTopic()));
-
-        // Write data to a file
-        data.apply("WriteDataToFile", TextIO.write().to("output.txt"));
+        if (options.getUseSubscription()) {
+            logger.info("Writing messages to Pub/Sub Subscription");
+            stringMessages.apply("Write to Pub/Sub subscription", PubsubIO.writeStrings().to(options.getOutputSubscription()));
+        } else {
+            logger.info("Writing messages to Pub/Sub Topic");
+            stringMessages.apply("Write to Pub/Sub topic", PubsubIO.writeStrings().to(options.getOutputTopic()));
+        }
 
         // Run the pipeline
         pipeline.run();
