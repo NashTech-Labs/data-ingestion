@@ -53,7 +53,6 @@ public class Application {
             happyGCSBucketURI.apply("Write to Pub/Sub topic", PubsubIO.writeStrings().to(options.getOutputTopic()));
         }
 
-        // Optionally, handle errors
         gcsErrors.apply("Log GCS Errors", ParDo.of(new DoFn<String, Void>() {
             @ProcessElement
             public void processElement(ProcessContext c) {
