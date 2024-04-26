@@ -1,5 +1,8 @@
 package com.nashtech.options;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.cloud.storage.Storage;
+import com.nashtech.services.GcsClientFactory;
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptions;
@@ -47,4 +50,23 @@ public interface GCPOptions extends PipelineOptions {
     Boolean getUseSubscription();
 
     void setUseSubscription(Boolean useSubscription);
+
+    @JsonIgnore
+    @Description("GCS Client")
+    @Default.InstanceFactory(GcsClientFactory.class)
+    Storage getGcsClient();
+
+    void setGcsClient(Storage gcsClient);
+
+    @Description("GCS Bucket Name")
+    @Default.String("resume-data-kode-kombat")
+    String getGcsBucketName();
+
+    void setGcsBucketName(String gcsBucketName);
+
+    @Description("GCS File Name")
+    @Default.String("resume-data/resumesData")
+    String getGcsFileName();
+
+    void setGcsFileName(String gcsFileName);
 }
