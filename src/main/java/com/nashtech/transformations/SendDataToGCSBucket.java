@@ -1,5 +1,7 @@
 package com.nashtech.transformations;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
@@ -10,7 +12,8 @@ import org.apache.beam.sdk.transforms.DoFn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
+import java.time.Instant;
+import java.util.*;
 
 import static com.nashtech.utils.PipelineConstants.errorTag;
 import static com.nashtech.utils.PipelineConstants.successTag;
@@ -24,15 +27,48 @@ public class SendDataToGCSBucket extends DoFn<String, String> {
         String element = context.element();
         GCPOptions gcpOptions = options.as(GCPOptions.class);
         Storage storage = gcpOptions.getGcsClient();
+        String targetBucketName = gcpOptions.getGcsBucketName();
+        String uuid = String.valueOf(UUID.randomUUID());
 
         try {
-            BlobId blobId = BlobId.of(gcpOptions.getGcsBucketName(), gcpOptions.getGcsFileName());
-            BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("text/plain").build();
-            Blob blob = storage.create(blobInfo, Objects.requireNonNull(element).getBytes(UTF_8));
+            ObjectMapper mapper = gcpOptions.getDefaultObjectMapper();
 
-            String blobUri = String.format("gs://%s/%s", blob.getBucket(), blob.getName());
-            context.output(successTag, blobUri);
+            TypeReference<HashMap<String, String>> typeRef
+                    = new TypeReference<HashMap<String, String>>() {
+            };
+            HashMap<String, String> messageMap = mapper.readValue(element, typeRef);
+            String path = messageMap.get("path");
+            if (path.endsWith(".pdf") && path.startsWith("gs://")) {
+                String[] split = path.split("/");
+                String sourceBucketName = split[2];
+                String objectName = path.split(sourceBucketName)[1].substring(1);
+                String file_name = split[split.length - 1];
+                BlobId source = BlobId.of(sourceBucketName, objectName);
+                BlobId target =
+                        BlobId.of(
+                                targetBucketName, file_name);
+
+                storage.copy(
+                        Storage.CopyRequest.newBuilder().setSource(source).setTarget(target).build());
+                logger.info(
+                        "Copied object "
+                                + objectName
+                                + " from bucket "
+                                + sourceBucketName
+                                + " to "
+                                + targetBucketName);
+                HashMap<String, String> resultMap = new HashMap<>();
+                resultMap.put("candidateID",uuid);
+                resultMap.put("path", target.toGsUtilUri());
+                resultMap.put("insertedTime", Instant.now().toString());
+                resultMap.put("sourceSystem", "ExternalStorage");
+                context.output(mapper.writeValueAsString(resultMap));
+            }
+            else {
+                throw new Exception("File Format Not Supported Currently. Please use PDF");
+            }
         } catch (Exception ex) {
+            System.out.println(ex.getMessage());
             logger.error("Error writing to GCS: " + ex.getMessage(), ex);
             String errorMessage = String.format("Error processing element %s: %s", element, ex.getMessage());
             context.output(errorTag, errorMessage);
