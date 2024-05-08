@@ -27,7 +27,7 @@ public interface GCPOptions extends PipelineOptions {
 
     @Description("The cloud Pub/Sub subscription to read from")
     @Validation.Required
-    @Default.String("projects/nashtech-ai-dev-389315/subscriptions/resume-input-topic-sub")
+    @Default.String("projects/alert-basis-421507/subscriptions/resume-parser-ingestion-topic-sub")
     String getInputSubscription();
 
     void setInputSubscription(String inputSubscription);
