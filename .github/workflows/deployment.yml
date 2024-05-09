@@ -21,6 +21,7 @@ jobs:
   setup-build-deploy:
     name: Setup, Build, and Deploy
     runs-on: ubuntu-latest
+    environment: run_environment
     steps:
       - uses: actions/checkout@v2
       - name: Set up JDK 11
