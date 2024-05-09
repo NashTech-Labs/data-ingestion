@@ -13,8 +13,9 @@ env:
     WORKER_REGION: us-east1
     WORKER_MACHINE_TYPE: e2-medium
     NUM_WORKERS: 1
-    TEMP_LOCATION: gs://nashtech-ai-dev-389315/staging_location
-    STAGING_LOCATION: gs://nashtech-ai-dev-389315/temp_location
+    MAX_WORKERS: 2
+    TEMP_LOCATION: gs://dataflow_job_metadata/temp_location
+    STAGING_LOCATION: gs://dataflow_job_metadata/staging_location
 
 jobs:
   setup-build-deploy:
@@ -68,11 +69,11 @@ jobs:
             # Push the Docker image to Google Container Registry
       - name: Build Flex Template
         run: |
-          gcloud dataflow flex-template build gs://nashtech-ai-dev-389315/templates/run_template_github.json --image us-docker.pkg.dev/$PROJECT_ID/docker-images/data-ingestion-github:latest --sdk-language JAVA
+          gcloud dataflow flex-template build gs://dataflow_job_metadata/templates/run_template_github_ingestion.json --image us-docker.pkg.dev/$PROJECT_ID/docker-images/data-ingestion-github:latest --sdk-language JAVA
       - name: Run Flex Template
         run: |
           gcloud dataflow flex-template run "data-ingestion-job-$(date +%Y-%m-%d)" \
-            --template-file-gcs-location=gs://nashtech-ai-dev-389315/templates/run_template_github.json \
+            --template-file-gcs-location=gs://dataflow_job_metadata/templates/run_template_github_ingestion.json \
             --worker-region=$WORKER_REGION \
             --worker-machine-type=$WORKER_MACHINE_TYPE \
             --region=$RUN_REGION \
