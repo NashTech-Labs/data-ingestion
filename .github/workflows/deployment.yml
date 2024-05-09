@@ -33,7 +33,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: data-ingestion-1.0-SNAPSHOT.jar
+          name: data-ingestion.jar
           path: target/
   build-docker-image:
     name: build-docker
